@@ -1,0 +1,669 @@
+import React, {useState, useRef} from 'react';
+import { FaUpload, FaImage, FaMusic, FaCheckCircle, FaExclamationCircle, FaPlay, FaPause, FaTimes, FaFilePowerpoint, FaMicrophone, FaVolumeUp } from 'react-icons/fa';
+import MainController from '../controller/MainController';
+import type { MainControllerInterface } from '../controller/MainControllerInterface';
+import { SlideEntity } from '../../domain/entity/SlideEntity';
+import './static/style.css';
+
+interface UploadState {
+    fileObj : File | null;
+    preview : string | null;
+    validExtension : boolean;
+    error : string | null;
+};
+
+const MainPage: React.FC = () => {
+    const [imageUpload, setImageUpload] = useState<UploadState>({
+        fileObj : null,
+        preview : null,
+        validExtension : false,
+        error : null,
+    });
+    
+    const [voiceUpload, setVoiceUpload] = useState<UploadState>({
+        fileObj : null,
+        preview : null,
+        validExtension : false,
+        error : null,
+    });
+
+    const [slideUpload, setSlideUpload] = useState<UploadState>({
+        fileObj: null,
+        preview: null,
+        validExtension: false,
+        error: null
+    });
+
+    const [slides, setSlides] = useState<SlideEntity[]>([]);
+    const [isProcessingSlides, setIsProcessingSlides] = useState(false);
+    const [speakerOptions] = useState([
+        { id: 'speaker_1', name: 'Giọng Nam 1' },
+        { id: 'speaker_2', name: 'Giọng Nữ 1' },
+        { id: 'speaker_3', name: 'Giọng Nam 2' },
+        { id: 'speaker_4', name: 'Giọng Nữ 2' }
+    ]);
+
+
+    const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const imageInputRef = useRef<HTMLInputElement>(null);
+    const audioInputRef = useRef<HTMLInputElement>(null);
+    const slideInputRef = useRef<HTMLInputElement>(null);
+
+
+
+    const controller: MainControllerInterface = new MainController();
+    const ttsCommand = "Xin chào, tôi muốn vui lòng được trải nghiệm dịch vụ tạo sinh giọng của hệ thống gia sư AI. Tôi đã xác nhận và đồng ý với các điều khoản và quy định pháp lí của dịch vụ này.";
+    
+    const handleVoiceUpload = (e : React.ChangeEvent<HTMLInputElement>) => {
+        const voiceFile = e.target.files?.[0] || null;
+
+        if (!voiceFile) {
+            throw new Error("No voice file selected");
+        }
+
+        const isValidExtension = controller.validateAudioFile(voiceFile);
+
+        if (!isValidExtension) {
+            setVoiceUpload({
+                fileObj: null,
+                preview: null,
+                validExtension: false,
+                error: 'Định dạng file âm thanh không hợp lệ. Chỉ chấp nhận MP3, WAV, M4A, OGG, WEBM'
+            });
+            return;
+        }
+
+        const previewUrl = controller.handleAudioUpload(voiceFile);
+
+        setVoiceUpload({
+            fileObj: voiceFile,
+            preview: previewUrl,
+            validExtension: true,
+            error: null
+        });
+    };
+    const handleImageUpload = (event : React.ChangeEvent<HTMLInputElement>) => {
+        const imageFile = event.target.files?.[0] || null;
+
+        if (!imageFile) {
+            throw new Error("No image file selected");
+        }
+
+        const isValidExtension = controller.validateImageFile(imageFile);
+        if (!isValidExtension) {
+
+            setImageUpload({
+                fileObj: null,
+                preview: null,
+                validExtension: false,
+                error: 'Định dạng file ảnh không hợp lệ. Chỉ chấp nhận JPG, PNG, WEBP'
+            });
+            return;
+        }
+
+        const previewUrl = controller.handleImageUpload(imageFile);
+
+        setImageUpload({
+            fileObj: imageFile,
+            preview: previewUrl,
+            validExtension: true,
+            error: null
+        });
+
+    };
+
+    const handleSlideUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const slideFile = event.target.files?.[0] || null;
+
+        if (!slideFile) {
+            throw new Error("No slide file selected");
+        }
+
+        const isValidExtension = controller.validateSlideFile(slideFile);
+        
+        if (!isValidExtension) {
+            setSlideUpload({
+                fileObj: null,
+                preview: null,
+                validExtension: false,
+                error: 'Định dạng file không hợp lệ. Chỉ chấp nhận .pptx, .ppt, .pdf'
+            });
+            return;
+        }
+
+        // Set loading state
+        setIsProcessingSlides(true);
+        setSlideUpload({
+            fileObj: slideFile,
+            preview: null,
+            validExtension: true,
+            error: null
+        });
+
+        try {
+            // Process the actual slide file
+            const extractedSlides = await controller.processSlideFile(slideFile);
+            setSlides(extractedSlides);
+        } catch (error) {
+            console.error('Error processing slide file:', error);
+            setSlideUpload({
+                fileObj: null,
+                preview: null,
+                validExtension: false,
+                error: error instanceof Error ? error.message : 'Có lỗi xảy ra khi xử lý file slide'
+            });
+            setSlides([]);
+        } finally {
+            setIsProcessingSlides(false);
+        }
+    };
+
+    const toggleAudioPlayback = () => {
+
+        if (audioRef.current) {
+            if (isAudioPlaying) {
+                audioRef.current.pause();
+            }else{
+                audioRef.current.play();
+            }
+            setIsAudioPlaying(!isAudioPlaying);
+        }
+    }
+
+    const deleteImage = () => {
+
+        setImageUpload({
+            fileObj: null,
+            preview: null,
+            validExtension: false,
+            error: null
+        });
+        if(imageInputRef.current) {
+            imageInputRef.current.value = '';
+        }
+    }
+    const deleteAudio = () => {
+        setVoiceUpload({
+            fileObj: null,
+            preview: null,
+            validExtension: false,
+            error: null
+        });
+        setIsAudioPlaying(false);
+        if (audioInputRef.current) {
+            audioInputRef.current.value = '';
+        }
+    };
+
+    const deleteSlide = () => {
+        setSlideUpload({
+            fileObj: null,
+            preview: null,
+            validExtension: false,
+            error: null
+        });
+        setSlides([]);
+        setIsProcessingSlides(false);
+
+        if (slideInputRef.current) {
+            slideInputRef.current.value = '';
+        }
+    };
+
+    const updateSlideText = (slideId: string, text: string) => {
+        setSlides(prevSlides => 
+            prevSlides.map(slide => {
+                if (slide.getId() === slideId) {
+                    const updatedSlide = new SlideEntity(
+                        slide.getId(),
+                        slide.getSlideNumber(),
+                        slide.getImageUrl(),
+                        text,
+                        slide.getSpeakerId(),
+                        slide.getAudioUrl(),
+                        slide.getIsGenerating()
+                    );
+                    return updatedSlide;
+                }
+                return slide;
+            })
+        );
+    };
+
+    const updateSlideSpeaker = (slideId: string, speakerId: string) => {
+        setSlides(prevSlides => 
+            prevSlides.map(slide => {
+                if (slide.getId() === slideId) {
+                    const updatedSlide = new SlideEntity(
+                        slide.getId(),
+                        slide.getSlideNumber(),
+                        slide.getImageUrl(),
+                        slide.getInputText(),
+                        speakerId,
+                        slide.getAudioUrl(),
+                        slide.getIsGenerating()
+                    );
+                    return updatedSlide;
+                }
+                return slide;
+            })
+        );
+    };
+
+    const generateVoice = (slideId: string) => {
+        setSlides(prevSlides => 
+            prevSlides.map(slide => {
+                if (slide.getId() === slideId) {
+                    const updatedSlide = new SlideEntity(
+                        slide.getId(),
+                        slide.getSlideNumber(),
+                        slide.getImageUrl(),
+                        slide.getInputText(),
+                        slide.getSpeakerId(),
+                        slide.getAudioUrl(),
+                        true
+                    );
+                    return updatedSlide;
+                }
+                return slide;
+            })
+        );
+
+        // Giả lập việc gọi TTS API
+        setTimeout(() => {
+            setSlides(prevSlides => 
+                prevSlides.map(slide => {
+                    if (slide.getId() === slideId) {
+                        const updatedSlide = new SlideEntity(
+                            slide.getId(),
+                            slide.getSlideNumber(),
+                            slide.getImageUrl(),
+                            slide.getInputText(),
+                            slide.getSpeakerId(),
+                            `https://example.com/generated_audio_${slideId}.mp3`,
+                            false
+                        );
+                        return updatedSlide;
+                    }
+                    return slide;
+                })
+            );
+        }, 3000);
+    };
+
+    const handleSlideAudioUpload = (slideId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+        const audioFile = event.target.files?.[0];
+        if (audioFile) {
+            const audioUrl = URL.createObjectURL(audioFile);
+            setSlides(prevSlides => 
+                prevSlides.map(slide => {
+                    if (slide.getId() === slideId) {
+                        const updatedSlide = new SlideEntity(
+                            slide.getId(),
+                            slide.getSlideNumber(),
+                            slide.getImageUrl(),
+                            slide.getInputText(),
+                            slide.getSpeakerId(),
+                            audioUrl,
+                            slide.getIsGenerating()
+                        );
+                        return updatedSlide;
+                    }
+                    return slide;
+                })
+            );
+        }
+    };
+
+    const handleProcessFiles = () => {
+        if (imageUpload.validExtension && voiceUpload.validExtension) {
+            console.log('Processing files:', {
+                image: imageUpload.fileObj?.name,
+                audio: voiceUpload.fileObj?.name
+            });
+            // Implement processing logic here
+            alert('Bắt đầu xử lý files...');
+        }
+    };
+
+    return (
+
+        <div className="main-page">
+            <div className="container">
+                <header className="header">
+                    <h1 className="title">Hệ thống tạo sinh video và âm thanh </h1>
+                    <p className="subtitle">Nhập ảnh để tạo sinh video hoặc nhập audio.wav để tạo sinh giọng nói</p>
+                </header>
+
+                <div className="upload-section">
+                    {/* Component 1: Image Upload */}
+                    <div className="upload-card">
+                        <div className="card-header">
+                            <FaImage className="card-icon" />
+                            <h2>Tải lên hình ảnh</h2>
+                            <p>Chọn một hình ảnh để sử dụng trong video của bạn</p>
+                        </div>
+
+                        <div className="upload-area">
+                            {!imageUpload.preview ? (
+                                <div 
+                                    className="upload-dropzone"
+                                    onClick={() => imageInputRef.current?.click()}
+                                >
+                                    <FaUpload className="upload-icon" />
+                                    <p className="upload-text">Nhấp để chọn hình ảnh</p>
+                                    <p className="upload-hint">JPG, PNG, WEBP (tối đa 10MB)</p>
+                                </div>
+                            ) : (
+                                <div className="preview-container">
+                                    <img 
+                                        src={imageUpload.preview} 
+                                        alt="Preview" 
+                                        className="image-preview"
+                                    />
+                                    <div className="preview-overlay">
+                                        <button 
+                                            className="remove-btn"
+                                            onClick={deleteImage}
+                                        >
+                                            <FaTimes />
+                                        </button>
+                                    </div>
+                                    <div className="file-info">
+                                        <FaCheckCircle className="success-icon" />
+                                        <span>{imageUpload.fileObj?.name}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <input
+                                ref={imageInputRef}
+                                type="file"
+                                accept="image/jpeg,image/jpg,image/png,image/webp"
+                                onChange={handleImageUpload}
+                                className="hidden-input"
+                            />
+                        </div>
+
+                        {imageUpload.error && (
+                            <div className="error-message">
+                                <FaExclamationCircle className="error-icon" />
+                                {imageUpload.error}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Component 2: Audio Upload for Voice Registration */}
+                    <div className="upload-card">
+                        <div className="card-header">
+                            <FaMusic className="card-icon" />
+                            <h2>Đăng ký giọng nói (Speaker ID)</h2>
+                            <p>Tải lên file âm thanh giọng nói để tạo Speaker ID</p>
+                        </div>
+
+                        <div className="sample-text">
+                            <h3>Nội dung cần đọc (khoảng 15-25 giây):</h3>
+                            <div className="text-content">
+                                "{ttsCommand}"
+                            </div>
+                        </div>
+
+                        <div className="upload-area">
+                            {!voiceUpload.preview ? (
+                                <div 
+                                    className="upload-dropzone"
+                                    onClick={() => audioInputRef.current?.click()}
+                                >
+                                    <FaMusic className="upload-icon" />
+                                    <p className="upload-text">Nhấp để chọn file âm thanh</p>
+                                    <p className="upload-hint">MP3, WAV, M4A, OGG (tối đa 20MB, ~15-25 giây)</p>
+                                </div>
+                            ) : (
+                                <div className="preview-container">
+                                    <div className="audio-container">
+                                        <audio 
+                                            ref={audioRef}
+                                            src={voiceUpload.preview}
+                                            onEnded={() => setIsAudioPlaying(false)}
+                                        />
+                                        <div className="audio-player">
+                                            <button 
+                                                className="play-btn"
+                                                onClick={toggleAudioPlayback}
+                                            >
+                                                {isAudioPlaying ? <FaPause /> : <FaPlay />}
+                                            </button>
+                                            <div className="audio-info">
+                                                <FaMusic className="audio-icon" />
+                                                <span>Audio đã sẵn sàng</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="preview-overlay">
+                                        <button 
+                                            className="remove-btn"
+                                            onClick={deleteAudio}
+                                        >
+                                            <FaTimes />
+                                        </button>
+                                    </div>
+                                    <div className="file-info">
+                                        <FaCheckCircle className="success-icon" />
+                                        <span>{voiceUpload.fileObj?.name}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <input
+                                ref={audioInputRef}
+                                type="file"
+                                accept="audio/mp3,audio/wav,audio/m4a,audio/ogg,audio/webm"
+                                onChange={handleVoiceUpload}
+                                className="hidden-input"
+                            />
+                        </div>
+
+                        {voiceUpload.error && (
+                            <div className="error-message">
+                                <FaExclamationCircle className="error-icon" />
+                                {voiceUpload.error}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                
+                {/* Component 3: Slide upload and management */}
+                <div className="slide-management-section">
+                    <div className="upload-card">
+                        <div className="card-header">
+                            <FaFilePowerpoint className="card-icon" />
+                            <h2>Quản lý Slides</h2>
+                            <p>Tải file định dạng powerpoint (.pptx, .ppt, .pdf) và quản lý nội dung</p>
+                        </div>
+
+                        <div className="upload-area">
+                            {slides.length === 0 && !isProcessingSlides ? (
+                                <div 
+                                    className="upload-dropzone"
+                                    onClick={() => slideInputRef.current?.click()}
+                                >
+                                    <FaFilePowerpoint className="upload-icon" />
+                                    <p className="upload-text">Nhấp để chọn file powerpoint</p>
+                                    <p className="upload-hint">.pptx, .ppt, .pdf (tối đa 20MB)</p>
+                                </div>
+                            ) : isProcessingSlides ? (
+                                <div className="processing-slides">
+                                    <div className="spinner-large"></div>
+                                    <p className="processing-text">Đang xử lý file PDF...</p>
+                                    <p className="processing-hint">Đang extract từng trang thành hình ảnh...</p>
+                                    <p className="processing-hint">Quá trình này có thể mất vài phút với file lớn</p>
+                                </div>
+                            ) : (
+                                <div className="slides-uploaded-info">
+                                    <div className="file-info">
+                                        <FaCheckCircle className="success-icon" />
+                                        <span>{slideUpload.fileObj?.name} - {slides.length} slides</span>
+                                        <button 
+                                            className="remove-btn"
+                                            onClick={deleteSlide}
+                                        >
+                                            <FaTimes/>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <input
+                                ref={slideInputRef}
+                                type="file"
+                                accept=".pptx,.ppt,.pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/pdf"
+                                onChange={handleSlideUpload}
+                                className="hidden-input"
+                            />
+
+                            {slideUpload.error && (
+                                <div className="error-message">
+                                    <FaExclamationCircle className="error-icon" />
+                                    {slideUpload.error}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Slides Table */}
+                        {slides.length > 0 && (
+                            <div className="slides-table-container">
+                                <h3>Danh sách Slides</h3>
+                                <div className="slides-table">
+                                    <div className="table-header">
+                                        <div className="col-image">Hình ảnh</div>
+                                        <div className="col-text">Nội dung</div>
+                                        <div className="col-voice">Tạo giọng nói</div>
+                                        <div className="col-audio">Upload Audio</div>
+                                    </div>
+                                    
+                                    {slides.map((slide) => (
+                                        <div key={slide.getId()} className="table-row">
+                                            {/* Cột 1: Hình ảnh Slide */}
+                                            <div className="col-image">
+                                                <img 
+                                                    src={slide.getImageUrl()} 
+                                                    alt={`Slide ${slide.getSlideNumber()}`}
+                                                    className="slide-thumbnail"
+                                                    onError={(e) => {
+                                                        console.error(`Failed to load image for slide ${slide.getSlideNumber()}`);
+                                                        const target = e.target as HTMLImageElement;
+                                                        target.src = `https://via.placeholder.com/100x70/6B7280/FFFFFF?text=Slide+${slide.getSlideNumber()}`;
+                                                    }}
+                                                    onLoad={() => {
+                                                        console.log(`Successfully loaded image for slide ${slide.getSlideNumber()}`);
+                                                    }}
+                                                />
+                                                <span className="slide-number">#{slide.getSlideNumber()}</span>
+                                            </div>
+
+                                            {/* Cột 2: Input text */}
+                                            <div className="col-text">
+                                                <textarea
+                                                    value={slide.getInputText()}
+                                                    onChange={(e) => updateSlideText(slide.getId(), e.target.value)}
+                                                    placeholder="Nhập nội dung cho slide này..."
+                                                    className="slide-text-input"
+                                                    rows={3}
+                                                />
+                                            </div>
+
+                                            {/* Cột 3: Generate Voice với Speaker Selection */}
+                                            <div className="col-voice">
+                                                <div className="voice-controls">
+                                                    <select
+                                                        value={slide.getSpeakerId()}
+                                                        onChange={(e) => updateSlideSpeaker(slide.getId(), e.target.value)}
+                                                        className="speaker-select"
+                                                    >
+                                                        {speakerOptions.map(speaker => (
+                                                            <option key={speaker.id} value={speaker.id}>
+                                                                {speaker.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    
+                                                    <button
+                                                        onClick={() => generateVoice(slide.getId())}
+                                                        disabled={slide.getIsGenerating() || !slide.getInputText().trim()}
+                                                        className={`generate-voice-btn ${slide.getIsGenerating() ? 'generating' : ''}`}
+                                                    >
+                                                        {slide.getIsGenerating() ? (
+                                                            <>
+                                                                <div className="spinner"></div>
+                                                                Đang tạo...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <FaMicrophone />
+                                                                Generate Voice
+                                                            </>
+                                                        )}
+                                                    </button>
+
+                                                    {slide.getAudioUrl() && !slide.getIsGenerating() && (
+                                                        <div className="generated-audio">
+                                                            <FaVolumeUp className="audio-ready-icon" />
+                                                            <span>Audio sẵn sàng</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Cột 4: Upload Audio */}
+                                            <div className="col-audio">
+                                                <div className="audio-upload-container">
+                                                    <input
+                                                        type="file"
+                                                        accept="audio/*"
+                                                        onChange={(e) => handleSlideAudioUpload(slide.getId(), e)}
+                                                        className="hidden-input"
+                                                        id={`audio-upload-${slide.getId()}`}
+                                                    />
+                                                    <label 
+                                                        htmlFor={`audio-upload-${slide.getId()}`}
+                                                        className="audio-upload-btn"
+                                                    >
+                                                        <FaUpload />
+                                                        Upload Audio
+                                                    </label>
+                                                    
+                                                    {slide.getAudioUrl() && (
+                                                        <div className="uploaded-audio-info">
+                                                            <FaMusic className="audio-icon" />
+                                                            <span>Audio đã tải</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="action-section">
+                    <button 
+                        className={`process-btn ${imageUpload.validExtension && voiceUpload.validExtension ? 'enabled' : 'disabled'}`}
+                        disabled={!imageUpload.validExtension || !voiceUpload.validExtension}
+                        onClick={handleProcessFiles}
+                    >
+                        Bắt đầu xử lý
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+
+        
+}
+
+export default MainPage;
