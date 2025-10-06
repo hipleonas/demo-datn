@@ -23,5 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 *.png
-__pycache__
-zip_2500
+backend/tts_service/registered_voices
+backend/tts_service/voice_storage
+backend/tts_service/zip_2500
+backend/tts_service/zipvoice

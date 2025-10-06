@@ -7,10 +7,12 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import click
 # --- CẤU HÌNH ---
-SAVED_VOICES_DIR = "./saved_voices"
-TEMP_AUDIO_DIR = "./temp_audio"  # Thư mục   lưu các chunk audio tạm thời
+# SAVE_VOICES = "./saved_voices"
+# TEMP_AUDIO_DIR = "./temp_audio"  # Thư mục   lưu các chunk audio tạm thời
+REGISTERED_VOICES_DIR = "./registered_voices"
+VOICE_STORAGE_DIR = "./voice_storage"
 
-app = Flask(__name__, static_folder=TEMP_AUDIO_DIR, static_url_path='/audio')
+app = Flask(__name__, static_folder=VOICE_STORAGE_DIR, static_url_path='/audio')
 
 # Enable CORS for all routes
 CORS(app)
@@ -63,9 +65,9 @@ def register_speaker(speaker_id, prompt_wav, prompt_text):
     """
     Hàm đăng ký một giọng nói mới bằng cách lưu file wav và text mẫu.
     """
-    os.makedirs(SAVED_VOICES_DIR, exist_ok=True)
-    saved_prompt_wav_path = os.path.join(SAVED_VOICES_DIR, f"{speaker_id}.wav")
-    saved_prompt_text_path = os.path.join(SAVED_VOICES_DIR, f"{speaker_id}.txt")
+    os.makedirs(REGISTERED_VOICES_DIR, exist_ok=True)
+    saved_prompt_wav_path = os.path.join(REGISTERED_VOICES_DIR, f"{speaker_id}.wav")
+    saved_prompt_text_path = os.path.join(REGISTERED_VOICES_DIR, f"{speaker_id}.txt")
 
     if not os.path.exists(prompt_wav):      
         print(f"Lỗi: Không tìm thấy file audio nguồn tại '{prompt_wav}'")
@@ -123,7 +125,7 @@ def register_speaker_endpoint():
             return jsonify({"success": False, "error": "File audio không được chọn"}), 400
         
         # Save uploaded file temporarily
-        temp_audio_path = os.path.join(TEMP_AUDIO_DIR, f"temp_{speaker_id}_{uuid.uuid4()}.wav")
+        temp_audio_path = os.path.join(VOICE_STORAGE_DIR, f"temp_{speaker_id}_{uuid.uuid4()}.wav")
         audio_file.save(temp_audio_path)
         
         # Register the speaker
@@ -144,6 +146,8 @@ def register_speaker_endpoint():
 @app.route('/synthesize', methods=['POST'])
 def synthesize():
     """API endpoint để tổng hợp một chunk văn bản."""
+    
+
     data = request.get_json()
     text_chunk = data.get('text_chunk')
     speaker_id = data.get('speaker_id')
@@ -151,36 +155,46 @@ def synthesize():
     if not text_chunk or not speaker_id:
         return jsonify({"success": False, "error": "Thiếu text_chunk hoặc speaker_id"}), 400
 
-    saved_prompt_wav_path = os.path.join(SAVED_VOICES_DIR, f"{speaker_id}.wav")
-    saved_prompt_text_path = os.path.join(SAVED_VOICES_DIR, f"{speaker_id}.txt")
+    saved_prompt_wav_path = os.path.join(REGISTERED_VOICES_DIR, f"{speaker_id}.wav")
+    saved_prompt_text_path = os.path.join(REGISTERED_VOICES_DIR, f"{speaker_id}.txt")
 
     if not os.path.exists(saved_prompt_wav_path):
         return jsonify({"success": False, "error": f"Giọng đọc '{speaker_id}' chưa được đăng ký."}), 404
 
     with open(saved_prompt_text_path, 'r', encoding='utf-8') as f:
         prompt_text = f.read().strip()
+    #Create speaker output directory if not exists
+
+    speaker_output_dir = os.path.join(VOICE_STORAGE_DIR, speaker_id)
+    os.makedirs(speaker_output_dir, exist_ok=True)
 
     # Use sequential number instead of UUID for easier management
     audio_number = _get_next_audio_number()
     chunk_filename = f"audio_{audio_number:04d}.wav"  # e.g., audio_0001.wav, audio_0002.wav
-    output_filepath = os.path.join(TEMP_AUDIO_DIR, chunk_filename)
+    output_filepath = os.path.join(speaker_output_dir, chunk_filename)
 
     success = _run_inference(text_chunk, output_filepath, saved_prompt_wav_path, prompt_text)
 
     if success:
-        audio_url = f"/audio/{chunk_filename}"
+        # Include speaker_id in URL to match the folder structure in voice_storage
+        audio_url = f"/audio/{speaker_id}/{chunk_filename}"
         return jsonify({
             "success": True, 
             "url": audio_url,
             "audio_number": audio_number,  # Return audio number for reference
-            "filename": chunk_filename
+            "filename": chunk_filename,
+            "speaker_id": speaker_id  # Include speaker_id for reference
         })
     else:
         return jsonify({"success": False, "error": "Lỗi khi tổng hợp âm thanh."}), 500
 
+
+
+
+    
 if __name__ == '__main__':
-    os.makedirs(SAVED_VOICES_DIR, exist_ok=True)
-    os.makedirs(TEMP_AUDIO_DIR, exist_ok=True)
+    os.makedirs(REGISTERED_VOICES_DIR, exist_ok=True)
+    os.makedirs(VOICE_STORAGE_DIR, exist_ok=True)
     app.run(port=5000, debug=False)
 
 

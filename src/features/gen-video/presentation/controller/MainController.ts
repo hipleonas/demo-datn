@@ -1,26 +1,295 @@
-import GenAudioServices from "../../domain/service/GenAudioServices";
-import {SpeakerEntity} from "../../domain/entity/SpeakerEntity";
-import type { AudioPlayerConfig, AudioPlayerCallbacks } from "../../domain/service/AudioPlayerService";
-import type { AudioChunk, AudioAccumulatorCallbacks } from "../../domain/service/GenAudioServices";
-///mnt/d/DATN-GIA-SU-AI/backend/tts_service
+// INTERNAL MODULES
+import AudioServices from "../../domain/service/AudioServices";
+import type { MainControllerInterface } from "./MainControllerInterface";
+import {AudioSlideEntity} from "../../domain/entity/AudioSlideEntity";
+import type { UploadState } from "../model/UploadState";
 
-class MainController {
-    private audioService: GenAudioServices;
+// EXTERNAL MODULES
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min?url";
+import type { SpeakerEntity } from "../../domain/entity/SpeakerEntity";
+import type { AudioChunkEntity } from "../../domain/entity/AudioChunkEntity";
+import type { AudioAccumulatorCallbacksEntity } from "../../domain/entity/AudioAccumulatorCallbacksEntity";
 
-    constructor () {
-        this.audioService = new GenAudioServices();
+// 👇 bắt buộc: trỏ workerSrc về file worker cục bộ
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
+
+/*
+MainController Implementation
+
+This class implements MainControllerInterface to provide concrete implementation
+for file upload handling and validation logic. The interface ensures consistency
+and enables easy testing and future extensibility.
+
+*/
+class MainController implements MainControllerInterface {
+    /* handleImageUpload(imageFile: File): string {
+        // Logic to handle image upload
+        console.log("Handling image upload:", imageFile.name);
+        // In a real implementation, this would upload to a service
+        return URL.createObjectURL(imageFile);
+    } */
+    audioService: AudioServices;
+
+    constructor() {
+        // Initialize AudioServices with a mock repository for now
+        // In a real implementation, you would inject the actual repository
+        this.audioService = new AudioServices({
+            generateVideo: async (_audioFile: File, _slides: AudioSlideEntity[]) => {
+                console.log("Mock repository: generateVideo called");
+            },
+            validateAudioFile: (_audioFile: File) => {
+                return true; // Mock validation
+            },
+            handleRegisterSpeaker: async (_audioFile: File, _speakerName: string) => {
+                return { success: false, message: "Mock repository method" };
+            },
+            createAudioLocalUrl: (audioFile: File) => {
+                return URL.createObjectURL(audioFile);
+            },
+            loadSpeakersFromStorage: () => {
+                return [];
+            },
+            saveSpeakersToStorage: (_speakers: SpeakerEntity[]) => {
+                console.log("Mock repository: saveSpeakersToStorage called");
+            },
+            getSpeakerList: () => {
+                return [];
+            },
+            stopPlayback: () => {
+                console.log("Mock repository: stopPlayback called");
+            },
+            clear: () => {
+                console.log("Mock repository: clear called");
+            }
+        });
+
+        
     }
 
-    public validateAudioFile(image:File) : boolean {
-        try{
-            return this.audioService.validateAudioFile(image);
+    
+
+    
+    handleReferenceImageUpload(imageFile: File | null): UploadState {
+        if (!imageFile) {
+            throw new Error("No image file selected");
         }
-        catch(error) {
-            console.error("Error validating image:", error);
+
+        // Start validate image file
+        let isValidExtension: boolean = true;
+
+        const maxSizeInMB = 10; // 10MB limit
+        const maxSizeInBytes = maxSizeInMB * 1024 * 1024;
+        
+        if (imageFile.size > maxSizeInBytes) {
+            isValidExtension = false;
+        }
+
+        const allowedFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        isValidExtension = allowedFormats.includes(imageFile.type);
+        // End validate image file
+
+        if (!isValidExtension) {
+            return {
+                fileObj: null,
+                preview: null,
+                validExtension: false,
+                error: 'Định dạng file âm thanh không hợp lệ. Chỉ chấp nhận MP3, WAV, M4A, OGG, WEBM'
+            };
+        }
+
+        return {
+            fileObj: imageFile,
+            preview: URL.createObjectURL(imageFile),
+            validExtension: true,
+            error: null
+        };
+    }
+
+
+    /* handleRAudioUpload(audioFile: File): string {
+        // Logic to handle voice registration audio upload
+        console.log("Handling audio upload:", audioFile.name);
+        // In a real implementation, this would process the audio for speaker ID
+        return URL.createObjectURL(audioFile);
+    } */
+    handleReferenceVoiceUpload(audioFile: File | null): UploadState {
+        if (!audioFile) {
+            throw new Error("No voice file selected");
+        }
+
+        // Start validate audio file
+        let isValidExtension: boolean = true;
+
+        const maxSizeInMB = 20; 
+        const maxSizeInBytes = maxSizeInMB * 1024 * 1024;
+        
+        if (audioFile.size > maxSizeInBytes) {
+            isValidExtension = false;
+        }
+
+        const allowedFormats = ['audio/mp3', 'audio/wav', 'audio/m4a', 'audio/ogg', 'audio/webm'];
+        isValidExtension = allowedFormats.includes(audioFile.type);
+        // End validate audio file
+
+        if (!isValidExtension) {
+            return {
+                fileObj: null,
+                preview: null,
+                validExtension: false,
+                error: 'Định dạng file âm thanh không hợp lệ. Chỉ chấp nhận MP3, WAV, M4A, OGG, WEBM'
+            };
+        }
+
+        return {
+            fileObj: audioFile,
+            preview: URL.createObjectURL(audioFile),
+            validExtension: true,
+            error: null
+        };
+    }
+
+
+    handleSlideUpload(slideFile: File | null): UploadState {
+        if (!slideFile) {
+            throw new Error("No slide file selected");
+        }
+
+        let isValidExtension : boolean = true;
+        
+        // Start validate slide file
+        const maxsizeInMB = 20;
+        const maxSizeInBytes = maxsizeInMB * 1024 * 1024;
+        if (slideFile.size > maxSizeInBytes) {
+            isValidExtension = false;
+        }
+
+        const allowedFormats = [
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+            'application/vnd.ms-powerpoint', // .ppt
+            'application/pdf' // .pdf
+        ];
+        
+        // Also check file extension as fallback
+        const fileName = slideFile.name.toLowerCase();
+        const hasValidExtension = fileName.endsWith('.pptx') || fileName.endsWith('.ppt') || fileName.endsWith('.pdf');
+
+        isValidExtension = (allowedFormats.includes(slideFile.type) || hasValidExtension);
+
+        // End validate slide file
+
+        if (!isValidExtension) {
+            return {
+                fileObj: null,
+                preview: null,
+                validExtension: false,
+                error: 'Định dạng file không hợp lệ. Chỉ chấp nhận .pptx, .ppt, .pdf'
+            };
+        }
+
+        return{
+            fileObj: slideFile,
+            preview: null,
+            validExtension: true,
+            error: null
+        };
+    }
+
+    async extractUploadedSlides(slideFile: File | null): Promise<AudioSlideEntity[]> {
+        if (!slideFile) {
+            throw new Error("No slide file selected");
+        }
+
+        const arrayBuffer = await slideFile.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        const extractedSlides: AudioSlideEntity[] = [];
+        for (let i = 0; i < pdf.numPages; i++) {
+            const slide = await pdf.getPage(i + 1);
+
+            // viewport để render
+            const viewport = slide.getViewport({ scale: 1.5 });
+            const canvas = document.createElement("canvas");
+            const context = canvas.getContext("2d")!;
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            // render page ra canvas
+            await slide.render({ canvasContext: context, viewport, canvas }).promise;
+
+            // convert canvas -> blob
+            const blob = await new Promise<Blob | null>((resolve) =>
+                canvas.toBlob(resolve, "image/png")
+            );
+
+            let previewUrl: string = "";
+            if (blob) {
+                previewUrl = URL.createObjectURL(blob); // object URL để hiển thị
+            }
+
+            const slideEntity = new AudioSlideEntity(
+                (i+1),                          // ID
+                (i+1),                          // Slide number
+                previewUrl,                     // Image url
+                '',                             // Input text
+                null,
+                null,
+                false                           // Is generating
+            );
+            extractedSlides.push(slideEntity);
+        }
+        return extractedSlides;
+    }
+
+    
+    handleValidateImageFile(imageFile: File | null): boolean {
+        if (!imageFile) {
+            throw new Error("No image file selected");
+        }
+        const maxSizeInMB = 10;
+        const maxSizeInBytes = maxSizeInMB * 1024 * 1024;
+        if (imageFile.size > maxSizeInBytes) {
             return false;
         }
+        const allowedFormats = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        return allowedFormats.includes(imageFile.type);
     }
-    public handleCreateAudioLocalUrl(audioFile: File) : string | null{
+
+    handleValidateAudioFile(audioFile: File | null): boolean {
+        if (!audioFile) {
+            throw new Error("No audio file selected");
+        }
+        const maxSizeInMB = 20;
+        const maxSizeInBytes = maxSizeInMB * 1024 * 1024;
+        if (audioFile.size > maxSizeInBytes) {
+            return false;
+        }
+        const allowedFormats = ['audio/mp3', 'audio/wav', 'audio/m4a', 'audio/ogg', 'audio/webm'];
+        return allowedFormats.includes(audioFile.type);
+    }
+
+    handleValidateSlideFile(slideFile: File | null): boolean {
+        if (!slideFile) {
+            throw new Error("No slide file selected");
+        }
+        const maxsizeInMB = 20;
+        const maxSizeInBytes = maxsizeInMB * 1024 * 1024;
+        if (slideFile.size > maxSizeInBytes) {
+            return false;
+        }
+        const allowedFormats = [
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+            'application/vnd.ms-powerpoint', // .ppt
+            'application/pdf' // .pdf
+        ];
+        const fileName = slideFile.name.toLowerCase();
+        const hasValidExtension = fileName.endsWith('.pptx') || fileName.endsWith('.ppt') || fileName.endsWith('.pdf');
+        return allowedFormats.includes(slideFile.type) || hasValidExtension;
+    }
+
+    //@New method : create Local url for audio file
+    handleCreateAudioLocalUrl(audioFile: File ): string | null {
         try {
             if (!this.audioService.validateAudioFile(audioFile)) {
                 throw new Error("Invalid audio file provided");
@@ -34,465 +303,128 @@ class MainController {
             console.error("Error creating audio local url:", error);
             return "";
         }
-
     }
 
-    public async handleRegisterSpeakerEntity(audioFile: File, SpeakerEntityName: string): Promise<SpeakerEntity | null> {
 
-        try {
-            if (!audioFile){
-                throw new Error("Invalid audio file provided");
-            }
-            if (!SpeakerEntityName || !SpeakerEntityName.trim()) {
-                throw new Error("SpeakerEntity name is required and cannot be empty");
-            }
-
-            console.log("Controller: Validation passed");
-            const ans = this.audioService.registerSpeaker(audioFile, SpeakerEntityName);
-
-            if (ans) {
-                console.log("Controller: Local SpeakerEntity registration successful");
-                
-                // Register with backend TTS service
-                try {
-                    const backendSuccess = await this.audioService.registerSpeakerWithBackend(
-                        ans.getId(), 
-                        audioFile, 
-                        ans.getFixedPromptInput()
-                    );
-                    
-                    if (backendSuccess) {
-                        console.log("Controller: Backend SpeakerEntity registration successful");
-                    } else {
-                        console.warn("Controller: Backend SpeakerEntity registration failed, but local registration succeeded");
-                    }
-                } catch (backendError) {
-                    console.warn("Controller: Backend registration failed:", backendError);
-                    // Don't fail the entire registration if backend fails
-                }
-            }
-            else{
-                console.error("Controller: SpeakerEntity registration failed");
-            }
-            return ans;
-            
-        }
-        catch(error) {
-            console.error("Controller: SpeakerEntity registration failed:", error);
-            console.error("Error details:", {
-                message: error instanceof Error ? error.message : 'Unknown error',
-                audioFileName: audioFile?.name || 'N/A',
-                SpeakerEntityName: SpeakerEntityName || 'N/A'
-            });
-            return null;        
-        }
+    generateVoiceForSlide(text: String, speakerId: string): void {
+        // Call TTS-AI-SERVICE to generate voice for the slide
+        console.log("Generating voice for text:", text, "with speaker ID:", speakerId); // Delete when code is implemented
+        return; 
     }
 
-    public async registerSpeakerEntity(audioFile: File, SpeakerEntityName: string): Promise<{ success: boolean; message: string; SpeakerEntity?: SpeakerEntity }> {
+    handleGenerateVideo(referenceImage: File, slides: AudioSlideEntity[]) : void {
+        // Call VIDEO-GENERATION-SERVICE to generate video
+        console.log("Generating video with reference image and slides:", referenceImage.name, slides); // Delete when code is implemented
+        
+        return; 
+    }
+
+    /*@New method implementation@*/
+    public async handleRegisterSpeaker(audioFile: File, speakerName: string): Promise<{ success: boolean; message: string; SpeakerEntity?: SpeakerEntity }> {
+    
         try {
-            const result = await this.handleRegisterSpeakerEntity(audioFile, SpeakerEntityName);
-            console.log("Controller: SpeakerEntity registration result:", result);
-            if (result) {
-                return {
-                    success: true,
-                    message: `SpeakerEntity "${result.getAudioFileName()}" đã được đăng ký thành công với ID`,
-                    SpeakerEntity: result
-                };
-            } else {
+            if (!audioFile) {
                 return {
                     success: false,
-                    message: "Đăng ký SpeakerEntity ID thất bại"
-                }
-            }
-        }
-        catch(error) {
-            console.error("Lỗi đăng kí SpeakerEntity: ", error);
-            return {
-                success : false,
-                message: error instanceof Error ? error.message : "Đã xảy ra lỗi không xác định"
-            }
-        }
-
-    }
-
-    public handleGetSpeakerEntitys(): SpeakerEntity[] {
-        try {
-            return this.audioService.getSpeakerList();
-        } catch(error) {
-            console.error("Failed to get SpeakerEntity list:", error);
-            return [];
-        }
-    }
-
-
-    public handleGetSpeakerEntityById(SpeakerEntityId: string): SpeakerEntity | null {
-        try {
-            if (!SpeakerEntityId.trim()) {
-                throw new Error("SpeakerEntity Id is required");
-            }
-            return this.audioService.getSpeakerById(SpeakerEntityId);
-        }
-        catch(error) {
-            console.error("Failed to get SpeakerEntity by id:", error);
-            return null;
-        }
-    }
-
-    public handleDeleteSpeakerEntity(SpeakerEntityId: string): boolean {
-        try {
-            if (!SpeakerEntityId || !SpeakerEntityId.trim()) {
-                throw new Error("SpeakerEntity Id is required");
-            }
-            return this.audioService.deleteSpeaker(SpeakerEntityId);
-        }
-        catch(error) {
-            console.error("Failed to delete SpeakerEntity:", error);
-            return false;
-        }
-    }
-
-    //Slide validation 
-
-    public validateSlideFile (slideFile: File): boolean {
-        try{
-            if(!slideFile) {
-                console.error("No slide file provided");
-                return false;
-            }
-            
-            const validMimeTypes = [
-                "application/pdf",
-                "application/vnd.ms-powerpoint", // .ppt
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
-            ];
-
-            const validExtensions = [".pdf", ".ppt", ".pptx"];
-
-            const fileExtension = slideFile.name.toLowerCase().substring(slideFile.name.lastIndexOf('.'));
-
-            const isValidMimeType = validMimeTypes.includes(slideFile.type);
-            const isValidExtension = validExtensions.includes(fileExtension);
-
-            if (!isValidMimeType && !isValidExtension) {
-                console.error(`Invalid slide file: ${slideFile.name}. Type: ${slideFile.type}, Extension: ${fileExtension}`);
-                return false;
+                    message: "Audio file is required",
+                };
             }
 
-            return true;
+            if (!speakerName || !speakerName.trim()) {
+                return {
+                    success: false,
+                    message: "Speaker name is required"
+                };
+            }
+
+            console.log('Gọi Audio Service');
+            const result = await this.audioService.handleRegisterSpeaker(audioFile, speakerName);
+
+            return result;
         
         }
-        catch(error) {
-            console.error("Failed to validate slide file:", error);
-            return false;
-        }
-    }
-
-    public async handleProcessPDF(slideFile: File): Promise<any[] | null>{
-        try {
-            const slides = await this.audioService.processPDF(slideFile);
-            return slides;
-        }
-        catch(error) {
-            console.error("Failed to process PDF:", error);
-            return null;
-        }
-    }
-
-    public async handleGetPDFInfo(slideFile: File) : Promise<any | null>{
-        try {
-            const pdfInfo =  await this.audioService.getPDFInfo(slideFile);
-            console.log("PDF Info:", pdfInfo);;
-            return pdfInfo;
-        }
-        catch(error) {
-            console.error("Failed to get PDF info:", error);
-            return null;
-        }
-    }
-
-    //TTS Voice Generation Methods
-
-    public async handleGenerateVoice(slideId: string, text: string, speakerId: string, options?: {
-        speed?: number;
-        gap?: number;
-    }): Promise<{ success: boolean; message: string; audioUrl?: string }> {
-        try {
-            if (!text.trim()) {
-                return {
-                    success: false,
-                    message: "Vui lòng nhập nội dung để tạo giọng nói"
-                };
-            }
-
-            if (!speakerId || speakerId === 'default') {
-                return {
-                    success: false,
-                    message: "Vui lòng chọn speaker để tạo giọng nói"
-                };
-            }
-
-            console.log(`Controller: Generating voice for slide ${slideId}`);
-            const audioUrl = await this.audioService.generateVoiceForSlide(slideId, text, speakerId, options);
-            
-            return {
-                success: true,
-                message: "Tạo giọng nói thành công",
-                audioUrl: audioUrl
-            };
-
-        } catch (error) {
-            console.error("Controller: Voice generation failed:", error);
+        catch(error){
+            console.error("Failed to register speaker: ", error);
             return {
                 success: false,
-                message: error instanceof Error ? error.message : "Có lỗi xảy ra khi tạo giọng nói"
-            };
+                message: error instanceof Error ? error.message : "Đã xảy ra lỗi khi đăng ký Speaker ID"
+            }
         }
     }
 
-    public async handleSynthesizeText(text: string, speakerId: string, options?: {
-        speed?: number;
-        gap?: number;
-    }): Promise<{ success: boolean; message: string; audioUrl?: string }> {
+    handleGetSpeakerList() : SpeakerEntity[] {
+        return this.audioService.getSpeakerList();
+    }
+
+    //TTS Service method
+
+    async handleGeneratedAudioChunks(text: string, speakerId: string, callbacks?: AudioAccumulatorCallbacksEntity): Promise<{success: boolean, message: string; chunks?: AudioChunkEntity[]}> {
         try {
-            if (!text.trim()) {
-                return {
-                    success: false,
-                    message: "Vui lòng nhập nội dung để tổng hợp"
-                };
-            }
-
-            if (!speakerId || speakerId === 'default') {
-                return {
-                    success: false,
-                    message: "Vui lòng chọn speaker để tổng hợp"
-                };
-            }
-
-            console.log(`Controller: Synthesizing text with speaker ${speakerId}`);
-            const audioUrl = await this.audioService.synthesizeText(text, speakerId, options);
-            
+            const chunks = await this.audioService.generateAllChunks(text, speakerId, callbacks);
             return {
                 success: true,
-                message: "Tổng hợp giọng nói thành công",
-                audioUrl: audioUrl
-            };
-
-        } catch (error) {
-            console.error("Controller: Text synthesis failed:", error);
-            return {
-                success: false,
-                message: error instanceof Error ? error.message : "Có lỗi xảy ra khi tổng hợp giọng nói"
-            };
-        }
-    }
-
-    public async handleSynthesizeTextStreaming(text: string, speakerId: string, options?: {
-        speed?: number;
-        gap?: number;
-        chunkSize?: number;
-        onProgress?: (chunk: number, total: number) => void;
-        onChunkReady?: (audioUrl: string, chunk: number) => void;
-    }): Promise<{ success: boolean; message: string; audioUrls?: string[] }> {
-        try {
-            if (!text.trim()) {
-                return {
-                    success: false,
-                    message: "Vui lòng nhập nội dung để tổng hợp streaming"
-                };
-            }
-
-            if (!speakerId || speakerId === 'default') {
-                return {
-                    success: false,
-                    message: "Vui lòng chọn speaker để tổng hợp streaming"
-                };
-            }
-
-            console.log(`Controller: Starting streaming synthesis with speaker ${speakerId}`);
-            const audioUrls = await this.audioService.synthesizeTextStreaming(text, speakerId, options);
-            
-            return {
-                success: true,
-                message: `Tổng hợp streaming thành công: ${audioUrls.length} chunks`,
-                audioUrls: audioUrls
-            };
-
-        } catch (error) {
-            console.error("Controller: Streaming synthesis failed:", error);
-            return {
-                success: false,
-                message: error instanceof Error ? error.message : "Có lỗi xảy ra khi tổng hợp streaming"
-            };
-        }
-    }
-
-    // Advanced Audio Player Methods
-
-    /**
-     * Play text with advanced audio player (chunking, prefetching, smooth playback)
-     */
-    public async handlePlayTextAdvanced(
-        text: string,
-        speakerId: string,
-        config?: AudioPlayerConfig,
-        callbacks?: AudioPlayerCallbacks
-    ): Promise<{ success: boolean; message: string }> {
-        try {
-            if (!text.trim()) {
-                return {
-                    success: false,
-                    message: "Vui lòng nhập nội dung để phát"
-                };
-            }
-
-            if (!speakerId || speakerId === 'default') {
-                return {
-                    success: false,
-                    message: "Vui lòng chọn speaker để phát"
-                };
-            }
-
-            console.log(`Controller: Starting advanced audio playback with speaker ${speakerId}`);
-            await this.audioService.playTextWithAdvancedPlayer(text, speakerId, config, callbacks);
-            
-            return {
-                success: true,
-                message: "Đã bắt đầu phát audio"
-            };
-
-        } catch (error) {
-            console.error("Controller: Advanced audio playback failed:", error);
-            return {
-                success: false,
-                message: error instanceof Error ? error.message : "Có lỗi xảy ra khi phát audio"
-            };
-        }
-    }
-
-    /**
-     * Stop audio playback
-     */
-    public handleStopAudio(): void {
-        this.audioService.stopAudioPlayback();
-    }
-
-    /**
-     * Pause audio playback
-     */
-    public handlePauseAudio(): void {
-        this.audioService.pauseAudioPlayback();
-    }
-
-    /**
-     * Check if audio is playing
-     */
-    public handleIsAudioPlaying(): boolean {
-        return this.audioService.isAudioPlaying();
-    }
-
-    /**
-     * Get audio playback progress
-     */
-    public handleGetAudioProgress(): { current: number; total: number } {
-        return this.audioService.getAudioProgress();
-    }
-
-    // Audio Accumulator Methods (Batch Generation + Sequential Playback)
-
-    /**
-     * Generate all audio chunks (batch generation)
-     */
-    public async handleGenerateAudioChunks(
-        text: string,
-        speakerId: string,
-        callbacks?: AudioAccumulatorCallbacks
-    ): Promise<{ success: boolean; message: string; chunks?: AudioChunk[] }> {
-        try {
-            if (!text.trim()) {
-                return {
-                    success: false,
-                    message: "Vui lòng nhập nội dung để tạo audio"
-                };
-            }
-
-            if (!speakerId || speakerId === 'default') {
-                return {
-                    success: false,
-                    message: "Vui lòng chọn speaker để tạo audio"
-                };
-            }
-
-            console.log(`Controller: Starting batch audio generation with speaker ${speakerId}`);
-            const chunks = await this.audioService.generateAudioChunks(text, speakerId, callbacks);
-            
-            return {
-                success: true,
-                message: `Đã tạo ${chunks.length} audio chunks`,
+                message: "Audio chunks generated successfully",
                 chunks: chunks
             };
-
-        } catch (error) {
-            console.error("Controller: Audio chunk generation failed:", error);
+        }
+        catch(error) {
+            console.error("Failed to generate audio chunks:", error);
             return {
                 success: false,
-                message: error instanceof Error ? error.message : "Có lỗi xảy ra khi tạo audio"
+                message: error instanceof Error ? error.message : "Failed to generate audio chunks"
             };
         }
     }
 
     /**
-     * Play all accumulated audio chunks
+     * Auto-concatenate audio chunks and upload to slide
      */
-    public async handlePlayAccumulatedAudio(
-        speed: number = 1.0,
-        gap: number = 0.05,
-        callbacks?: AudioAccumulatorCallbacks
-    ): Promise<{ success: boolean; message: string }> {
+    async handleAutoConcatenateAndUploadAudio(slideId: number, audioChunks: AudioChunkEntity[]): Promise<{success: boolean, message: string, audioUrl?: string}> {
         try {
-            console.log(`Controller: Starting accumulated audio playback`);
-            await this.audioService.playAccumulatedAudio(speed, gap, callbacks);
+            console.log(`Auto-concatenating audio for slide ${slideId} with ${audioChunks.length} chunks`);
+            
+            const result = await this.audioService.autoConcatenateAndUploadAudioChunks(slideId, audioChunks);
             
             return {
-                success: true,
-                message: "Đã bắt đầu phát audio"
+                success: result.success,
+                message: result.message,
+                audioUrl: result.audioUrl
             };
-
         } catch (error) {
-            console.error("Controller: Audio playback failed:", error);
+            console.error(`Failed to auto-concatenate audio for slide ${slideId}:`, error);
             return {
                 success: false,
-                message: error instanceof Error ? error.message : "Có lỗi xảy ra khi phát audio"
+                message: error instanceof Error ? error.message : "Failed to concatenate audio chunks"
             };
         }
     }
 
     /**
-     * Stop accumulated audio playback
+     * Merge audio files from temp directory
      */
-    public handleStopAccumulatedAudio(): void {
-        this.audioService.stopAccumulatedAudio();
+    async handleMergeAudioFromTempDirectory(slideId: number, audioUrls: string[]): Promise<{success: boolean, message: string, audioUrl?: string}> {
+        try {
+            console.log(`Merging audio from temp directory for slide ${slideId} with ${audioUrls.length} URLs`);
+            
+            const result = await this.audioService.mergeAudioFromTempDirectory(audioUrls, slideId);
+            
+            return {
+                success: result.success,
+                message: result.message,
+                audioUrl: result.audioUrl
+            };
+        } catch (error) {
+            console.error(`Failed to merge audio from temp directory for slide ${slideId}:`, error);
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : "Failed to merge audio from temp directory"
+            };
+        }
     }
 
-    /**
-     * Get generated audio chunks
-     */
-    public handleGetAudioChunks(): AudioChunk[] {
-        return this.audioService.getAudioChunks();
-    }
 
-    /**
-     * Check if accumulated audio is playing
-     */
-    public handleIsAccumulatedAudioPlaying(): boolean {
-        return this.audioService.isAccumulatedAudioPlaying();
-    }
-
-    /**
-     * Clear all audio chunks
-     */
-    public handleClearAudioChunks(): void {
-        this.audioService.clearAudioChunks();
-    }
+    
 }
 
 export default MainController;
+

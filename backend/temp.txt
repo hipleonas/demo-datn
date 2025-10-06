@@ -1,0 +1,163 @@
+ {/* Component 3: Slide upload and management */}
+<div className="slide-management-section">
+    <div className="upload-card">
+        <div className="card-header">
+            <FaFilePowerpoint className="card-icon" />
+            <h2>Quản lý Slides</h2>
+            <p>Tải file định dạng powerpoint (.pptx, .ppt, .pdf) và quản lý nội dung</p>
+        </div>
+
+        <div className="upload-area">
+            {slides.length === 0 && !isProcessingSlides ? (
+                <div 
+                    className="upload-dropzone"
+                    onClick={() => slideInputRef.current?.click()}
+                >
+                    <FaFilePowerpoint className="upload-icon" />
+                    <p className="upload-text">Nhấp để chọn file powerpoint</p>
+                    <p className="upload-hint">.pptx, .ppt, .pdf (tối đa 20MB)</p>
+                </div>
+            ) : isProcessingSlides ? (
+                <div className="processing-slides">
+                    <div className="spinner-large"></div>
+                    <p className="processing-text">Đang xử lý file PDF...</p>
+                    <p className="processing-hint">Đang extract từng trang thành hình ảnh...</p>
+                    <p className="processing-hint">Quá trình này có thể mất vài phút với file lớn</p>
+                </div>
+            ) : (
+                <div className="slides-uploaded-info">
+                    <div className="file-info">
+                        <FaCheckCircle className="success-icon" />
+                        <span>{slideUpload.fileObj?.name} - {slides.length} slides</span>
+                        <button 
+                            className="remove-btn"
+                            onClick={deleteSlide}
+                        >
+                            <FaTimes/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <input
+                ref={slideInputRef}
+                type="file"
+                accept=".pptx,.ppt,.pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/pdf"
+                onChange={handleSlideUpload}
+                className="hidden-input"
+            />
+
+            {slideUpload.error && (
+                <div className="error-message">
+                    <FaExclamationCircle className="error-icon" />
+                    {slideUpload.error}
+                </div>
+            )}
+        </div>
+
+
+        {/* Slides Table */}
+        {slides.length > 0 && (
+            <div>
+                {/* Speaker Selection */}
+                <div className="speaker-selection">
+                    <h3>Lựa chọn giọng nói</h3>
+                    <select className="speaker-select">
+                        {speakerOptions.map(speaker => (
+                            <option key={speaker.id} value={speaker.id}>
+                                {speaker.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="slides-table-container">
+                    <h3>Danh sách Slides</h3>
+                    <div className="slides-table">
+                        <div className="table-header">
+                            <div className="col-image">Hình ảnh</div>
+                            <div className="col-text">Nội dung</div>
+                            <div className="col-voice">Tạo giọng nói</div>
+                            <div className="col-audio">Upload Audio</div>
+                        </div>
+                    
+                        {slides.map((slide) => (
+                            <div key={slide.getId()} className="table-row">
+                                {/* Cột 1: Hình ảnh Slide */}
+                                <div className="col-image">
+                                    <img 
+                                        src={slide.getImageUrl() || `https:via.placeholder.com/100x70/6B7280/FFFFFF?text=Slide+${slide.getId()}`} 
+                                        alt={`Slide ${slide.getId()}`}
+                                        className="slide-thumbnail"
+                                        onLoad={() => {
+                                            console.log(`Successfully loaded image for slide ${slide.getId()}`);
+                                        }}
+                                    />
+                                    <span className="slide-number">#{slide.getId()}</span>
+                                </div>
+
+                                {/* Cột 2: Input text */}
+                                <div className="col-text">
+                                    <textarea
+                                        value={slideText[slide.getId()] || ''}
+                                        onChange={(e) => {
+                                            const newSlideText = [...slideText];
+                                            newSlideText[slide.getId()] = e.target.value;
+                                            setSlideText(newSlideText);
+                                        }}
+                                        placeholder="Nhập nội dung cho slide"
+                                        className="slide-text-input"
+                                        rows={5}
+                                    />
+                                </div>
+
+                                {/* Cột 3: Generate Voice với Speaker Selection */}
+                                <div className="col-voice">
+                                    <div className="voice-controls">                                            
+                                        <button 
+                                            className="generate-voice-btn" 
+                                            onClick={() => {
+                                                Call controller 
+                                                controller.generateVoiceForSlide("Text", "SpeakerId");
+
+                                                Giả lập cập nhật audioUrl sau khi tạo giọng nói
+                                                const updateSlides = [...slides];
+                                                const currentSlide = updateSlides[slide.getId() - 1];
+                                                currentSlide.setAudioUrl("https:www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3");
+                                                setSlides(updateSlides);
+
+                                            }}>
+                                            Tạo giọng nói mới
+                                        </button>                                                    
+                                        
+
+                                        <input
+                                            type="file"
+                                            accept="audio/*"
+                                            onChange={() => { }}
+                                            className="hidden-input"
+                                            id={`audio-upload-${slide.getId()}`}
+                                        />
+                                        <label 
+                                            htmlFor={`audio-upload-${slide.getId()}`}
+                                            className="audio-upload-btn"
+                                        >
+                                            <FaUpload />
+                                            Upload Audio
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Cột 4: Upload Audio */}
+                                <div className="col-audio">
+                                    {slides[slide.getId() - 1].getAudioUrl() && (
+                                    <audio controls src={slides[slide.getId() - 1].getAudioUrl() || undefined}></audio>
+                                )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
+    </div>
+</div>
